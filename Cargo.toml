@@ -16,13 +16,23 @@ rand = "0.8.5"
 
 tokio = { version = "1", features = ["full"] } # 异步运行时
 tokio-stream = "0.1"
-reqwest = { version = "0.12", features = ["json"] } # HTTP 客户端
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 dotenvy = "0.15" # 用于加载 .env 文件中的环境变量
 futures = "0.3"
 
 zip = "0.6"
+# genanki's ZIP dependency otherwise links to the host's libbz2 on Unix.
+bzip2 = { version = "0.4", features = ["static"] }
 rusqlite = { version = "0.25.4", features = ["bundled"] }
 tempfile = "3.8"
 zstd = "0.13.1"
 lazy_static = "1.4"
+axum = "0.8"
+toml = "0.8"
+base64 = "0.22"
+fs2 = "0.4"
+tokio-util = { version = "0.7", features = ["io"] }
 
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

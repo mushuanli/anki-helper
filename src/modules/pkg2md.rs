@@ -6,9 +6,9 @@ use anyhow::{anyhow, Context, Result};
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::fs;
+use std::io::Read;
 use std::path::Path;
-use tempfile::Builder;
-use std::io::Read; // <--- 添加这一行
+use tempfile::Builder; // <--- 添加这一行
 
 /// "pkg2md" 子命令的公共处理函数
 pub fn handle_pkg2md_command(args: Pkg2mdArgs) -> Result<()> {
@@ -19,7 +19,8 @@ pub fn handle_pkg2md_command(args: Pkg2mdArgs) -> Result<()> {
     fs::create_dir_all(&args.output_dir)
         .with_context(|| format!("错误: 无法创建输出目录 {}", args.output_dir.display()))?;
 
-    let deck_name = args.pkg_file
+    let deck_name = args
+        .pkg_file
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("anki_deck")
@@ -42,7 +43,7 @@ pub fn handle_pkg2md_command(args: Pkg2mdArgs) -> Result<()> {
     for note_result in notes_iter {
         let flds_str = note_result?;
         let fields: Vec<&str> = flds_str.split('\x1f').collect();
-        
+
         // 我们只处理符合 WordData 结构的笔记
         // 简单检查：单词字段(0)不为空
         if fields.get(0).map_or(true, |s| s.is_empty()) {
@@ -50,7 +51,8 @@ pub fn handle_pkg2md_command(args: Pkg2mdArgs) -> Result<()> {
         }
 
         let word_data = fields_to_word_data(&fields);
-        let unit_key = word_data.unit
+        let unit_key = word_data
+            .unit
             .as_ref()
             .and_then(|v| {
                 if let Some(s) = v.as_str() {
@@ -64,7 +66,7 @@ pub fn handle_pkg2md_command(args: Pkg2mdArgs) -> Result<()> {
             .map(|s| s.trim_matches('"').to_string())
             .filter(|s| !s.is_empty())
             .unwrap_or_default();
-        
+
         units.entry(unit_key).or_default().push(word_data);
         count += 1;
     }
@@ -81,7 +83,8 @@ pub fn handle_pkg2md_command(args: Pkg2mdArgs) -> Result<()> {
         let output_filename = if unit.is_empty() {
             args.output_dir.join(format!("{}.md", deck_name))
         } else {
-            args.output_dir.join(format!("{} - unit{}.md", deck_name, unit))
+            args.output_dir
+                .join(format!("{} - unit{}.md", deck_name, unit))
         };
 
         let mut content = "| 中文 | 单词 |\n| :--- | :--- |\n".to_string();
@@ -93,7 +96,11 @@ pub fn handle_pkg2md_command(args: Pkg2mdArgs) -> Result<()> {
 
         match fs::write(&output_filename, content) {
             Ok(_) => println!("  [✓] 成功生成文件: {}", output_filename.display()),
-            Err(e) => eprintln!("  [✗] 错误: 写入文件 '{}' 失败. {}", output_filename.display(), e),
+            Err(e) => eprintln!(
+                "  [✗] 错误: 写入文件 '{}' 失败. {}",
+                output_filename.display(),
+                e
+            ),
         }
     }
 
@@ -113,7 +120,13 @@ fn extract_collection_db(pkg_path: &Path, temp_dir: &Path) -> Result<std::path::
 
     // 1. 扫描所有可能的数据库文件名
     for i in 0..archive.len() {
-        if let Some(filename_str) = archive.by_index(i)?.name().split('/').last().filter(|s| !s.is_empty()) {
+        if let Some(filename_str) = archive
+            .by_index(i)?
+            .name()
+            .split('/')
+            .last()
+            .filter(|s| !s.is_empty())
+        {
             match filename_str {
                 "collection.anki21" => anki21_path = Some(filename_str.to_string()),
                 "collection.anki21b" => anki21b_path = Some(filename_str.to_string()),
@@ -122,7 +135,7 @@ fn extract_collection_db(pkg_path: &Path, temp_dir: &Path) -> Result<std::path::
             }
         }
     }
-    
+
     // 2. 根据优先级选择要处理的文件
     if let Some(db_name) = anki21_path {
         // 最高优先级：如果存在标准的 .anki21，直接使用
@@ -132,12 +145,11 @@ fn extract_collection_db(pkg_path: &Path, temp_dir: &Path) -> Result<std::path::
         let mut outfile = fs::File::create(&outpath)?;
         std::io::copy(&mut file_in_archive, &mut outfile)?;
         return Ok(outpath);
-
     } else if let Some(db_name) = anki21b_path {
         // 第二优先级：处理压缩的 .anki21b
         println!("找到压缩的数据库文件: {}", &db_name);
         let mut file_in_archive = archive.by_name(&db_name)?;
-        
+
         let mut compressed_bytes = Vec::new();
         file_in_archive.read_to_end(&mut compressed_bytes)?;
 
@@ -153,7 +165,6 @@ fn extract_collection_db(pkg_path: &Path, temp_dir: &Path) -> Result<std::path::
 
         println!("成功解压并创建数据库: {}", target_path.display());
         return Ok(target_path); // 返回新创建的、可用的数据库路径
-
     } else if let Some(db_name) = anki2_path {
         // 最低优先级：使用旧的 .anki2
         println!("找到旧版数据库文件: {}", &db_name);
@@ -163,14 +174,14 @@ fn extract_collection_db(pkg_path: &Path, temp_dir: &Path) -> Result<std::path::
         std::io::copy(&mut file_in_archive, &mut outfile)?;
         return Ok(outpath);
     }
-    
+
     Err(anyhow!("在 .apkg 文件中未找到任何有效的数据库文件"))
 }
 
 /// 将 Anki 笔记字段向量转换为 WordData 结构
 fn fields_to_word_data(fields: &[&str]) -> WordData {
     let get_field = |i: usize| fields.get(i).map(|s| s.to_string());
-    
+
     // 从serde_json::Value转换回字符串或数字
     let get_json_value = |i: usize| {
         fields.get(i).and_then(|s| {
@@ -203,9 +214,9 @@ fn fields_to_word_data(fields: &[&str]) -> WordData {
         image: None,
         image_prompt: None,
         image_taskid: None,
+        extra: Default::default(),
     }
 }
-
 
 /// 清理来自 Anki 的文本，将其转换为 md 命令所需的格式
 fn clean_anki_text(text_opt: &Option<String>) -> String {
@@ -218,7 +229,6 @@ fn clean_anki_text(text_opt: &Option<String>) -> String {
         None => "N/A".to_string(),
     }
 }
-
 
 /// 将单个 WordData 格式化为 Markdown 表格的一行
 fn format_word_to_markdown_row(word: &WordData) -> String {

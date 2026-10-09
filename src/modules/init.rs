@@ -1,7 +1,7 @@
 // src/modules/init.rs
 
 mod config;
-mod utils;
+pub(crate) mod utils;
 
 use crate::cli::InitArgs;
 use crate::models::WordData;
@@ -10,7 +10,7 @@ use anyhow::{anyhow, Context, Result};
 use futures::stream::{self, StreamExt};
 use reqwest::Client;
 use serde::Deserialize;
-use std::path::{Path};
+use std::path::Path;
 use tokio::fs;
 
 // <<< 定义一个常量来控制并发请求的数量，避免对API造成过大压力
@@ -18,27 +18,39 @@ const CONCURRENT_REQUESTS: usize = 15;
 
 /// `init` 命令的主处理函数
 pub async fn handle_init_command(args: InitArgs) -> Result<()> {
+    let settings = crate::settings::Settings::load(&std::env::current_dir()?)?;
+    settings.validate(true)?;
     let output_dir = args.output_dir;
-    let template_path = args.template.unwrap_or_else(|| output_dir.join("index.json"));
+    let template_path = args
+        .template
+        .unwrap_or_else(|| output_dir.join("index.json"));
 
     if !template_path.exists() {
         return Err(anyhow!("错误: 索引文件不存在: {}", template_path.display()));
     }
-    
+
     utils::ensure_directories(&output_dir).await?;
     println!("目录结构已确认/创建于: {}", output_dir.display());
 
     let client = Client::new();
 
-    let extension = template_path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let extension = template_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
     match extension {
-        "json" => init_from_json(&client, &template_path, &output_dir).await?,
-        "txt" => init_from_txt(&client, &template_path, &output_dir).await?,
-        _ => return Err(anyhow!("不支持的文件类型: {}. 请提供 .json 或 .txt 文件。", extension)),
+        "json" => init_from_json(&client, &template_path, &output_dir, &settings).await?,
+        "txt" => init_from_txt(&client, &template_path, &output_dir, &settings).await?,
+        _ => {
+            return Err(anyhow!(
+                "不支持的文件类型: {}. 请提供 .json 或 .txt 文件。",
+                extension
+            ))
+        }
     }
 
     println!("\n===== 开始处理多媒体文件生成 =====");
-    init_multimedia(&client, &output_dir).await?;
+    init_multimedia(&client, &output_dir, &settings).await?;
     println!("所有多媒体任务处理完毕。");
 
     Ok(())
@@ -52,10 +64,15 @@ struct IndexEntry {
 }
 
 // <<<  重构为并发执行
-async fn init_from_json(client: &Client, template_path: &Path, output_dir: &Path) -> Result<()> {
+async fn init_from_json(
+    client: &Client,
+    template_path: &Path,
+    output_dir: &Path,
+    settings: &crate::settings::Settings,
+) -> Result<()> {
     let content = fs::read_to_string(template_path).await?;
     let entries: Vec<IndexEntry> = serde_json::from_str(&content)?;
-    
+
     let json_dir = output_dir.join(config::JSON_DIR);
     let mut current_unit = 1;
 
@@ -69,7 +86,7 @@ async fn init_from_json(client: &Client, template_path: &Path, output_dir: &Path
                 continue;
             }
         }
-        
+
         let file_path = json_dir.join(format!("{}.json", utils::get_safe_base_name(&entry.name)));
         if file_path.exists() {
             println!("已跳过 (已存在): {}", entry.name);
@@ -85,24 +102,28 @@ async fn init_from_json(client: &Client, template_path: &Path, output_dir: &Path
             let client = client.clone();
             let entry_name = entry.name.clone();
             let json_dir = json_dir.clone();
-            
+
             // 创建一个异步任务块
             async move {
                 println!("正在通过 AI 生成: {}", entry_name);
-                match utils::ai_chat(&client, &entry_name).await {
+                match utils::ai_chat(&client, &entry_name, settings).await {
                     Ok(mut word_data) => {
                         // 在任务内部处理结果
                         word_data.unit = Some(serde_json::Value::from(unit));
-                        if let Some(chn) = entry.chn { word_data.chn = Some(chn); }
+                        if let Some(chn) = entry.chn {
+                            word_data.chn = Some(chn);
+                        }
                         if let Some(ext) = entry.ext {
                             let original_tips = word_data.memory_tips.unwrap_or_default();
                             word_data.memory_tips = Some(format!("{}\n{}", ext, original_tips));
                         }
-                        
-                        let file_path = json_dir.join(format!("{}.json", utils::get_safe_base_name(&entry_name)));
+
+                        let file_path = json_dir
+                            .join(format!("{}.json", utils::get_safe_base_name(&entry_name)));
                         let json_string = serde_json::to_string_pretty(&word_data)
                             .with_context(|| format!("序列化 '{}' 失败", entry_name))?;
-                        fs::write(&file_path, &json_string).await
+                        fs::write(&file_path, &json_string)
+                            .await
                             .with_context(|| format!("写入文件失败: {}", file_path.display()))?;
                         Ok(())
                     }
@@ -122,28 +143,34 @@ async fn init_from_json(client: &Client, template_path: &Path, output_dir: &Path
     Ok(())
 }
 
-
 // <<< 重构为并发执行
-async fn init_from_txt(client: &Client, template_path: &Path, output_dir: &Path) -> Result<()> {
+async fn init_from_txt(
+    client: &Client,
+    template_path: &Path,
+    output_dir: &Path,
+    settings: &crate::settings::Settings,
+) -> Result<()> {
     let content = fs::read_to_string(template_path).await?;
     let lines: Vec<String> = content.lines().map(String::from).collect();
-    
+
     let json_dir = output_dir.join(config::JSON_DIR);
     let mut current_unit = 1;
 
     let mut tasks = vec![];
     for line in lines {
         let trimmed = line.trim();
-        if trimmed.is_empty() { continue; }
+        if trimmed.is_empty() {
+            continue;
+        }
 
         if trimmed.to_lowercase().starts_with("unit") {
-             if let Some(num_str) = trimmed.split_whitespace().nth(1) {
+            if let Some(num_str) = trimmed.split_whitespace().nth(1) {
                 if let Ok(num) = num_str.parse::<i32>() {
                     current_unit = num;
                     println!("\n切换到 Unit {}", current_unit);
                     continue;
                 }
-             }
+            }
         }
 
         let file_path = json_dir.join(format!("{}.json", utils::get_safe_base_name(trimmed)));
@@ -160,13 +187,15 @@ async fn init_from_txt(client: &Client, template_path: &Path, output_dir: &Path)
             let json_dir = json_dir.clone();
             async move {
                 println!("正在通过 AI 生成: {}", word);
-                match utils::ai_chat(&client, &word).await {
+                match utils::ai_chat(&client, &word, settings).await {
                     Ok(mut word_data) => {
                         word_data.unit = Some(serde_json::Value::from(unit));
-                        let file_path = json_dir.join(format!("{}.json", utils::get_safe_base_name(&word)));
+                        let file_path =
+                            json_dir.join(format!("{}.json", utils::get_safe_base_name(&word)));
                         let json_string = serde_json::to_string_pretty(&word_data)
                             .with_context(|| format!("序列化 '{}' 失败", word))?;
-                        fs::write(&file_path, &json_string).await
+                        fs::write(&file_path, &json_string)
+                            .await
                             .with_context(|| format!("写入文件失败: {}", file_path.display()))?;
                         Ok(())
                     }
@@ -187,7 +216,11 @@ async fn init_from_txt(client: &Client, template_path: &Path, output_dir: &Path)
 }
 
 // <<< 重构为并发执行
-async fn init_multimedia(client: &Client, output_dir: &Path) -> Result<()> {
+async fn init_multimedia(
+    client: &Client,
+    output_dir: &Path,
+    settings: &crate::settings::Settings,
+) -> Result<()> {
     let json_dir = output_dir.join(config::JSON_DIR);
     let mut read_dir = fs::read_dir(&json_dir).await?;
     let mut paths_to_process = Vec::new();
@@ -209,14 +242,21 @@ async fn init_multimedia(client: &Client, output_dir: &Path) -> Result<()> {
                 let content = fs::read_to_string(&path).await?;
                 let mut word_data: WordData = serde_json::from_str(&content)?;
 
-                let needs_update = utils::generate_multimedia_for_word(&client, &mut word_data, &output_dir).await?;
+                let needs_update = utils::generate_multimedia_for_word(
+                    &client,
+                    &mut word_data,
+                    &output_dir,
+                    settings,
+                )
+                .await;
 
-                if needs_update {
+                if needs_update.is_err() || needs_update.as_ref().is_ok_and(|v| *v) {
                     let updated_content = serde_json::to_string_pretty(&word_data)?;
                     fs::write(&path, updated_content).await?;
                     println!("更新了JSON文件: {}", path.display());
                 }
 
+                needs_update?;
                 Ok(())
             }
         })

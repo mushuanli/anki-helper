@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Anki Helper · 本地制卡</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<header><div class="brand"><span class="logo">A</span><div><strong>Anki Helper</strong><small>本地制卡工作台</small></div></div><button id="settings-button" class="secondary">模型与服务</button></header>
+<div id="notice" role="status" aria-live="polite" hidden></div>
+<div class="layout">
+<aside><div class="aside-title"><h2>我的项目</h2><button id="new-button" class="icon" aria-label="新建或打开项目">＋</button></div><div id="projects"></div><div class="local-note"><span class="dot"></span>文件直接保存在本机<div id="runtime-dir" class="path"></div></div></aside>
+<main>
+<section id="welcome"><span class="eyebrow">从单词到学习卡片</span><h1>把学习材料，变成记得住的卡片。</h1><p>导入单词，生成释义和例句，检查内容后导出到 Anki。所有项目和媒体文件都保存在你指定的本地目录。</p><button id="welcome-new">创建或打开项目</button><div class="steps"><div><b>01</b><h3>导入材料</h3><p>粘贴单词，或打开已有项目目录。</p></div><div><b>02</b><h3>生成与检查</h3><p>编辑内容，预览配图，试听发音。</p></div><div><b>03</b><h3>导出到 Anki</h3><p>生成本地卡片包，打开文件夹导入。</p></div></div></section>
+<section id="workspace" hidden>
+<div class="workspace-head"><div><span class="eyebrow">本地项目</span><h1 id="project-name"></h1><div id="project-path" class="path"></div></div><button id="open-project" class="secondary">打开文件夹</button></div>
+<div class="toolbar"><span id="card-count"></span><div><button id="import-button" class="secondary">追加单词</button><button id="generate-all">补全全部缺失内容</button><button id="export-md" class="secondary">导出 Markdown</button><button id="export-apkg" class="secondary">导出 Anki 卡片包</button></div></div>
+<section id="job-panel" class="job-panel" hidden aria-live="polite"><div class="job-heading"><strong id="job-title"></strong><span id="job-time"></span></div><progress id="job-progress" max="100" value="0"></progress><div id="job-message"></div><button id="retry-failed" type="button" class="secondary" hidden>重试失败卡片</button><details id="job-errors" hidden><summary>查看失败详情</summary><pre id="errors-text"></pre></details><div id="export-result" hidden><p>文件已保存到本机：</p><div id="output-path" class="output-path"></div><div class="result-actions"><button id="open-result">打开所在文件夹</button><button id="copy-path" class="secondary">复制路径</button><a id="download-result" class="button secondary">另存一份</a></div><p class="hint">在 Anki 中选择「文件 → 导入」，选取上面的 .apkg 文件。</p></div></section>
+<div class="cards-layout"><section class="card-list-panel"><label class="search-label"><span class="sr-only">搜索单词</span><input id="search" placeholder="搜索单词或释义…"></label><div id="cards"></div></section><section id="editor-panel"><div id="editor-empty" class="empty">选择一张卡片，检查或编辑内容。</div><div id="editor" hidden><div class="editor-head"><div><span class="eyebrow">卡片编辑</span><h2 id="word-name"></h2></div><div class="card-generation"><button id="generate-one" class="secondary">补全此卡缺失内容</button><select id="regenerate-scope" aria-label="重新生成的内容"><option value="text">文本</option><option value="audio">音频</option><option value="image">配图</option></select><button id="regenerate-one" class="secondary">重新生成</button></div></div><form id="card-form"><div class="field-grid"><label>音标<input name="symbol"></label><label>中文释义<input name="chn"></label></div><label>英文例句<textarea name="example_en" rows="2"></textarea></label><label>例句翻译<textarea name="example_cn" rows="2"></textarea></label><div class="field-grid"><label>词族<textarea name="word_family" rows="2"></textarea></label><label>常用搭配<textarea name="collocations" rows="2"></textarea></label></div><label>记忆方法<textarea name="memory_tips" rows="3"></textarea></label><label>配图描述<textarea name="image_prompt" rows="2"></textarea></label><div class="editor-actions"><span id="dirty-note" class="hint"></span><button id="save-card" type="submit">保存修改</button></div></form><div id="media-preview" class="media-preview"></div></div></section></div>
+</section>
+</main>
+</div>
+<dialog id="new-dialog"><form id="new-form"><div class="dialog-head"><h2>创建或打开项目</h2><button type="button" class="close" data-close="new-dialog" aria-label="关闭">×</button></div><label>项目名称<input name="name" required maxlength="80" placeholder="例如：七年级英语 Unit 1"></label><label>本地项目目录<input name="path" placeholder="例如 D:\Anki\英语 或 /home/me/anki/英语"></label><p class="hint">支持绝对路径，或相对于运行目录的路径。默认保存在运行目录的 projects/项目名 下，可自行修改。已有目录会读取 word_json/*.json 或 index.json。</p><label>单词列表<textarea name="words" rows="8" placeholder="apple&#10;banana&#10;Unit 2&#10;remember"></textarea></label><label class="file-label">读取已有 JSON<input id="words-file" type="file" accept=".json,application/json"></label>
+<div class="photo-import"><strong>拍照导入课本单词表</strong><p class="hint">请拍摄课本后面的课文单词表，保持文字清晰、页面平整，可一次上传 1–6 张。识别后请检查拼写、音标和释义。</p><label>上传单词表照片<input id="new-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><div id="new-photo-preview" class="photo-preview"></div><button id="new-extract" type="button" class="secondary" disabled>识别并填写单词列表</button><p class="hint">照片会发送给设置中的识图模型，可能产生费用。支持 JPG、PNG、WebP，单张最多 8 MB，总共最多 12 MB。</p><div id="new-extract-result" role="status" aria-live="polite"></div></div><p class="hint">每行一个单词，可用 Unit 2 分组；也支持 WordData JSON 数组。打开已有目录时可以留空。已有同名单词不会被覆盖。</p><div class="dialog-actions"><button type="button" class="secondary" data-close="new-dialog">取消</button><button id="create-submit" type="submit">打开项目</button></div></form></dialog>
+<dialog id="import-dialog"><form id="import-form"><div class="dialog-head"><h2>追加单词</h2><button type="button" class="close" data-close="import-dialog" aria-label="关闭">×</button></div><label>单词列表<textarea name="words" rows="10" required placeholder="每行一个单词，也支持卡片 JSON 数组"></textarea></label><label class="file-label">读取已有 JSON<input id="import-file" type="file" accept=".json,application/json"></label>
+<div class="photo-import"><strong>拍照导入课本单词表</strong><p class="hint">请拍摄课本后面的课文单词表，保持文字清晰，可上传 1–6 张。识别结果会填写到上方，请检查后再导入。</p><label>上传单词表照片<input id="import-photos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><div id="import-photo-preview" class="photo-preview"></div><button id="import-extract" type="button" class="secondary" disabled>识别并填写单词列表</button><p class="hint">照片会发送给识图模型，可能产生费用。单张最多 8 MB，总共最多 12 MB。</p><div id="import-extract-result" role="status" aria-live="polite"></div></div><p class="hint">新单词直接写入当前项目目录，已有卡片不会被覆盖。</p><div class="dialog-actions"><button type="button" class="secondary" data-close="import-dialog">取消</button><button type="submit">导入单词</button></div></form></dialog>
+<dialog id="settings-dialog" aria-labelledby="settings-title"><form id="settings-form" novalidate>
+<div class="settings__header">
+  <div class="dialog-head"><div><h2 id="settings-title">设置</h2><p class="hint">连接服务，选择制卡使用的模型。</p></div><button type="button" class="close" data-close="settings-dialog" aria-label="关闭设置">×</button></div>
+  <div class="settings-tabs" role="tablist" aria-label="设置分类">
+    <button type="button" id="tab-connections" role="tab" aria-controls="connection-settings" aria-selected="false" tabindex="-1">服务连接</button>
+    <button type="button" id="tab-generation" role="tab" aria-controls="generation-settings" aria-selected="true">模型用途</button>
+    <button type="button" id="tab-advanced" role="tab" aria-controls="advanced-settings" aria-selected="false" tabindex="-1">高级</button>
+  </div>
+</div>
+<div class="settings__body">
+<section id="connection-settings" role="tabpanel" aria-labelledby="tab-connections" hidden>
+  <p class="settings__intro">方舟用于文本、识图和配图；豆包语音使用独立的 Key。填写后可单独验证，无需先保存。</p>
+  <div id="connections"></div>
+</section>
+<section id="generation-settings" role="tabpanel" aria-labelledby="tab-generation">
+  <div class="settings__purposes" role="tablist" aria-label="模型用途">
+    <button type="button" id="purpose-text" role="tab" aria-controls="model-text" aria-selected="true">文本</button>
+    <button type="button" id="purpose-vision" role="tab" aria-controls="model-vision" aria-selected="false" tabindex="-1">识图</button>
+    <button type="button" id="purpose-image" role="tab" aria-controls="model-image" aria-selected="false" tabindex="-1">配图</button>
+    <button type="button" id="purpose-audio" role="tab" aria-controls="model-audio" aria-selected="false" tabindex="-1">语音</button>
+  </div>
+  <section id="model-text" role="tabpanel" aria-labelledby="purpose-text">
+    <div class="settings__section-head"><div><h3>文本生成</h3><p class="hint">生成释义、例句和记忆方法。</p></div><span class="settings__tag">必需</span></div>
+    <label>服务连接<select name="text_connection"></select></label>
+    <label>模型<select id="text-preset"></select></label>
+    <label id="text-custom">模型 / 接入点 ID<input name="openai_model" placeholder="输入模型 ID 或 ep- 开头的接入点"></label>
+    <label id="thinking-option" class="check"><input type="checkbox" name="text_thinking">深度思考<span class="hint">生成耗时更长</span></label>
+    <div class="test-actions"><button id="test-text" data-model-test type="button" class="secondary">验证文本</button><span class="hint">生成 apple 示例卡片</span></div>
+    <div id="test-text-result" class="test-result" data-model-test-result hidden aria-live="polite"></div>
+  </section>
+  <section id="model-vision" role="tabpanel" aria-labelledby="purpose-vision" hidden>
+    <div class="settings__section-head"><div><h3>照片识词</h3><p class="hint">从课本单词表照片中提取单词。</p></div><span class="settings__tag">按需使用</span></div>
+    <label>服务连接<select name="vision_connection"></select></label>
+    <label>模型<select id="vision-preset"></select></label>
+    <label id="vision-custom">模型 / 接入点 ID<input name="vision_model"></label>
+    <div class="test-actions"><button id="test-vision" type="button" class="secondary" data-model-test>验证识图</button><span class="hint">识别内置 APPLE 示例图片</span></div>
+    <div id="test-vision-result" class="test-result" data-model-test-result hidden aria-live="polite"></div>
+  </section>
+  <section id="model-image" role="tabpanel" aria-labelledby="purpose-image" hidden>
+    <div class="settings__section-head"><div><h3>卡片配图</h3><p class="hint">补全卡片时，同时生成配图。</p></div><label class="settings__switch"><input name="images_enabled" type="checkbox" role="switch" aria-label="生成配图"><span>启用</span></label></div>
+    <p id="image-disabled" class="settings__disabled">配图已关闭。启用后可选择模型并预览效果。</p>
+    <div id="image-options">
+      <label>服务连接<select name="image_connection"></select></label>
+      <label>模型<select id="image-preset"></select></label>
+      <label id="image-custom">模型 / 接入点 ID<input name="image_model"></label>
+      <div class="test-actions"><button id="test-image" data-model-test type="button" class="secondary">验证配图</button><span class="hint">生成一张示例图片</span></div>
+      <div id="test-image-result" class="test-result" data-model-test-result hidden aria-live="polite"></div>
+    </div>
+  </section>
+  <section id="model-audio" role="tabpanel" aria-labelledby="purpose-audio" hidden>
+    <div class="settings__section-head"><div><h3>单词与例句发音</h3><p class="hint">补全卡片时，同时生成朗读音频。</p></div><label class="settings__switch"><input name="audio_enabled" type="checkbox" role="switch" aria-label="生成音频"><span>启用</span></label></div>
+    <p id="audio-disabled" class="settings__disabled">语音已关闭。启用后可选择音色并试听。</p>
+    <div id="audio-options">
+      <label>语音来源<select name="audio_backend"><option value="doubao">豆包语音</option><option value="system" id="system-audio-option" hidden>macOS 系统语音 · 无需 Key</option></select></label>
+      <div id="doubao-audio-options">
+        <label>服务连接<select name="tts_connection"></select></label>
+        <label>模型<select id="tts-preset"></select></label>
+        <label id="tts-custom">模型 / 资源 ID<input name="tts_model"></label>
+        <label>音色<select id="voice-preset"></select></label>
+        <label id="voice-custom">音色 ID<input name="tts_voice"></label>
+        <p id="voice-help" class="hint"></p>
+      </div>
+      <div id="system-audio-options" hidden><label>系统音色<input name="system_voice" placeholder="留空使用系统默认音色"></label><p class="hint">使用本机已安装的声音生成 WAV 音频。</p></div>
+      <div class="test-actions"><button id="test-audio" data-model-test type="button" class="secondary">验证语音</button><span class="hint">生成并试听示例音频</span></div>
+      <div id="test-audio-result" class="test-result" data-model-test-result hidden aria-live="polite"></div>
+    </div>
+  </section>
+  <button id="manage-connections" type="button" class="settings__text-button">管理服务连接 →</button>
+  <p class="hint settings__test-note">测试使用当前填写的设置，无需先保存；调用云服务可能产生费用。</p>
+</section>
+<section id="advanced-settings" role="tabpanel" aria-labelledby="tab-advanced" hidden>
+  <div class="settings__section-head"><div><h3>运行设置</h3><p class="hint">通常保持默认值即可。</p></div></div>
+  <label>同时生成的任务数<input name="concurrency" type="number" min="1" max="16" aria-describedby="concurrency-help"></label><p id="concurrency-help" class="hint">1–16 个；过高可能触发服务限流。</p>
+  <label>启动端口<input name="port" type="number" min="0" max="65535" aria-describedby="port-help"></label><p id="port-help" class="hint">0 表示自动分配，修改后下次启动生效。</p>
+</section>
+</div>
+<div class="settings__footer"><div id="settings-error" role="alert" hidden></div><div class="dialog-actions"><button type="button" class="secondary" data-close="settings-dialog">取消</button><button id="save-settings" type="submit">保存设置</button></div></div>
+</form></dialog>
+</body></html>

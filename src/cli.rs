@@ -7,11 +7,13 @@ use std::path::PathBuf;
 #[command(name = "helper", version, about, long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// 启动本地 Web 应用（不指定子命令时默认启动）
+    Serve(ServeArgs),
     /// 将指定目录打包成一个 .apkg 文件
     Pack(PackArgs),
     /// 初始化项目目录，通过 AI 生成单词卡片和媒体文件
@@ -22,6 +24,16 @@ pub enum Command {
     Pkg2md(Pkg2mdArgs),
 }
 
+#[derive(Args, Debug, Default)]
+pub struct ServeArgs {
+    /// 指定端口，0 表示自动选择空闲端口
+    #[arg(long)]
+    pub port: Option<u16>,
+    /// 不自动打开浏览器
+    #[arg(long)]
+    pub no_browser: bool,
+}
+
 /// "pack" 子命令的参数
 #[derive(Args, Debug)]
 pub struct PackArgs {
@@ -30,8 +42,8 @@ pub struct PackArgs {
     pub pack_dir: PathBuf,
 
     /// ankimodel.json 模板文件的路径
-    #[arg(short, long, default_value = "template/ankimodel.json")]
-    pub template: PathBuf,
+    #[arg(short, long)]
+    pub template: Option<PathBuf>,
 }
 
 /// "init" 子命令的参数
