@@ -4,3 +4,11 @@ helper
 9A/
 *.log
 *.err
+
+/config.toml
+/projects.json
+/projects/
+/.helper.lock
+/.env
+/release/
+/.service-tests-*/

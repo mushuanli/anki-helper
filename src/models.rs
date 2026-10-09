@@ -1,5 +1,5 @@
 // src/models.rs
-use serde::{Deserialize, Serialize}; 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
@@ -46,6 +46,9 @@ pub struct WordData {
     pub image_prompt: Option<String>, // <--- 新增这一行
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_taskid: Option<String>, // 新增用于跟踪图片生成任务的字段
+    /// Preserve project-specific fields when editing existing local cards.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default, Clone)] // <--- 修改

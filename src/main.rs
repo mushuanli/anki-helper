@@ -3,6 +3,9 @@
 mod cli;
 mod models;
 mod modules;
+mod providers;
+mod settings;
+mod web;
 
 use anyhow::Result;
 use clap::Parser;
@@ -20,23 +23,25 @@ async fn main() -> Result<()> {
 
     // 2. 根据子命令进行分发
     match cli.command {
-        Command::Pack(args) => {
+        Some(Command::Pack(args)) => {
             // pack 功能是同步的，所以可以直接调用
             modules::pack::handle_pack_command(args)?;
         }
-        Command::Init(args) => {
+        Some(Command::Init(args)) => {
             // init 功能是异步的，需要 .await
             modules::init::handle_init_command(args).await?;
         }
         // --- 新增: 分发到新的 md 模块 ---
-        Command::Md(args) => {
+        Some(Command::Md(args)) => {
             // md 功能是同步的，所以可以直接调用
             modules::md::handle_md_command(args)?;
         }
         // --- 新增: 分发到新的 pkg2md 模块 ---
-        Command::Pkg2md(args) => {
+        Some(Command::Pkg2md(args)) => {
             modules::pkg2md::handle_pkg2md_command(args)?;
         }
+        Some(Command::Serve(args)) => web::serve(args).await?,
+        None => web::serve(cli::ServeArgs::default()).await?,
     }
 
     Ok(())

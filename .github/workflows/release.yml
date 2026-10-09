@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check web interactions
+        run: |
+          npm install --prefix "$RUNNER_TEMP/web-ui" --no-audit --no-fund jsdom@27.2.0
+          ANKI_JSDOM_PATH="$RUNNER_TEMP/web-ui/node_modules/jsdom" node tests/web-ui.cjs
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            platform: linux-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x64
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            platform: macos-intel
+          - os: macos-15
+            target: aarch64-apple-darwin
+            platform: macos-apple-silicon
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install musl compiler
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Test
+        run: cargo test --locked
+      - name: Build release
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package Unix release
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          package="anki-helper-${{ matrix.platform }}"
+          mkdir -p "$package" dist
+          cp "target/${{ matrix.target }}/release/helper" "$package/"
+          cp README.md config.toml.example "$package/"
+          tar -czf "dist/$package.tar.gz" "$package"
+      - name: Package Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = "anki-helper-${{ matrix.platform }}"
+          New-Item -ItemType Directory -Path $package, dist -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/helper.exe" "$package/"
+          Copy-Item README.md, config.toml.example "$package/"
+          Compress-Archive -Path $package -DestinationPath "dist/$package.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anki-helper-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [web-ui, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cd dist
+          sha256sum *.tar.gz *.zip > SHA256SUMS.txt
+          gh release create "$GITHUB_REF_NAME" ./* --verify-tag --title "Anki Helper $GITHUB_REF_NAME" --notes-file ../.github/release-notes.md
