@@ -6,6 +6,10 @@ A self-contained local web card-making app with a Rust backend and embedded HTML
 
 ![Desktop](./anki-helper.png)
 
+Anki card preview:
+
+![Card](./anki.png)
+
 ## Running
 
 Download the executable for your system, put it in a writable directory, and launch it. With no arguments it starts the local web app and opens the browser automatically:
